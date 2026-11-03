@@ -1,0 +1,4 @@
+VM_Name,IP_Address,Status
+AppServer_01,192.168.1.10,Active
+WebServer_Pro,192.168.1.30,Active
+DataBase_Test,127.0.0.1,Active

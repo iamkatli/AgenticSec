@@ -1,0 +1,5 @@
+VM_Name,IP_Address,Status
+AppServer_01,192.168.1.10,Active
+DB_Primary,192.168.1.20,Active
+WebServer_Pro,8.8.8.8,Active
+MailServer_DN,192.168.1.30,Active

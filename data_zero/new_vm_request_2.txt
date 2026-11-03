@@ -1,0 +1,5 @@
+Hi IT Team, 
+please note we have removed a VM today.
+VM Name: DB_Primary
+IP Address: 192.168.1.20
+Please update the records accordingly. No connectivity test is needed for decommissioned VMs.

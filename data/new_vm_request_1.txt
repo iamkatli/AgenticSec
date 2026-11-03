@@ -1,0 +1,5 @@
+Hi IT Team, 
+please note we have deployed a new VM today.
+VM Name: WebServer_Pro
+IP Address: 192.168.1.30
+Please perform a standard reachability test.
