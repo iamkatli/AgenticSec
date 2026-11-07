@@ -46,15 +46,50 @@ MAX_RETRIES_PER_RUN = 15
 
 # --- LLM (pinned here so results do not depend on model-file defaults) ---
 # Model and endpoint come from .env (MODEL, OPENAI_API_BASE, OPENAI_API_KEY);
-# sampling parameters are fixed in code. TEMPERATURE / TOP_P equal the
-# qwen3:14b model-file defaults used in all earlier runs. top_k (20) and
-# repeat_penalty (1) are not part of the OpenAI-compatible API, so they
-# still come from the Ollama model file -- the report header records them.
+# sampling parameters are fixed in code, per model, in MODEL_PROFILES below.
+# Policy: each model runs with its developer's officially recommended
+# sampling settings. top_k / repeat_penalty are not part of the
+# OpenAI-compatible API, so they still come from the Ollama model file --
+# the report header records them.
 LLM_MODEL = os.getenv("MODEL", "openai/qwen3:14b")
 LLM_BASE_URL = os.getenv("OPENAI_API_BASE", "http://localhost:3001/v1")
-LLM_TEMPERATURE = 0.6
-LLM_TOP_P = 0.95
-OLLAMA_MODEL_NAME = "qwen3:14b"   # used only to record `ollama show` output in the report
+
+# Ollama tag of the model (used to pick the profile and to record
+# `ollama show` in the report). Derived from MODEL ("openai/qwen3:14b" ->
+# "qwen3:14b"); set OLLAMA_MODEL in .env only if the proxy uses an alias.
+OLLAMA_MODEL_NAME = os.getenv("OLLAMA_MODEL", LLM_MODEL.split("/", 1)[-1])
+
+# Per-model sampling. None = not sent (the model / server default applies,
+# and the report header records the Ollama model-file value).
+#   temperature, top_p : developer-recommended values (check the model card)
+#   reasoning_effort   : only for models with thinking levels (gpt-oss).
+#                        None = model default (gpt-oss: "medium"). Before
+#                        setting it, confirm in a Langfuse trace that the
+#                        proxy really forwards it to Ollama.
+MODEL_PROFILES = {
+    # Qwen3 thinking-mode recommendation (top_k 20 from the model file).
+    # MUST stay 0.6 / 0.95: every earlier qwen3 run used these values.
+    "qwen3:14b":        {"temperature": 0.6, "top_p": 0.95, "reasoning_effort": None},
+    # OpenAI gpt-oss recommendation: temperature 1.0, top_p 1.0.
+    "gpt-oss:20b":      {"temperature": 1.0, "top_p": 1.0,  "reasoning_effort": None},
+    # Meta Llama 3.1 generation_config: temperature 0.6, top_p 0.9.
+    "llama3.1:8b":      {"temperature": 0.6, "top_p": 0.9,  "reasoning_effort": None},
+    # Google Gemma 3: temperature 1.0, top_p 0.95 (top_k 64 from the model file).
+    "gemma3:12b":       {"temperature": 1.0, "top_p": 0.95, "reasoning_effort": None},
+    # Mistral NeMo: temperature 0.3 recommended; no top_p recommendation.
+    "mistral-nemo:12b": {"temperature": 0.3, "top_p": None, "reasoning_effort": None},
+}
+
+if OLLAMA_MODEL_NAME not in MODEL_PROFILES:
+    # Fail loudly instead of silently running with someone else's sampling.
+    raise SystemExit(
+        f"config.py: no sampling profile for model '{OLLAMA_MODEL_NAME}'. "
+        f"Add it to MODEL_PROFILES (known: {', '.join(MODEL_PROFILES)})."
+    )
+
+LLM_TEMPERATURE = MODEL_PROFILES[OLLAMA_MODEL_NAME]["temperature"]
+LLM_TOP_P = MODEL_PROFILES[OLLAMA_MODEL_NAME]["top_p"]
+LLM_REASONING_EFFORT = MODEL_PROFILES[OLLAMA_MODEL_NAME]["reasoning_effort"]
 
 # --- Attack detection ---
 HACKED_FILE = "/tmp/hacked_status.txt"

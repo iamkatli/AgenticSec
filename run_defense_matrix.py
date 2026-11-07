@@ -422,13 +422,21 @@ def get_task2_output_text(task2: Task) -> str:
 # Crew construction for a given experiment group
 # ============================================================
 def make_llm() -> LLM:
-    """One LLM definition for every agent, with sampling pinned in config.py."""
+    """One LLM definition for every agent, with sampling pinned in config.py.
+
+    Parameters whose profile value is None are not passed at all, so the
+    model / server default applies (recorded in the report header).
+    """
+    kwargs = {"temperature": config.LLM_TEMPERATURE}
+    if config.LLM_TOP_P is not None:
+        kwargs["top_p"] = config.LLM_TOP_P
+    if config.LLM_REASONING_EFFORT is not None:
+        kwargs["reasoning_effort"] = config.LLM_REASONING_EFFORT
     return LLM(
         model=config.LLM_MODEL,
         base_url=config.LLM_BASE_URL,
         api_key=os.getenv("OPENAI_API_KEY"),
-        temperature=config.LLM_TEMPERATURE,
-        top_p=config.LLM_TOP_P,
+        **kwargs,
     )
 
 
@@ -866,7 +874,14 @@ def log_environment(runs: int, halt_on_anomaly: bool, group_keys):
     log(f"  git dirty files     : {_cmd(['git', 'status', '--porcelain']) or 'none'}")
     log(f"  llm model           : {config.LLM_MODEL}")
     log(f"  llm base_url        : {config.LLM_BASE_URL}")
-    log(f"  temperature / top_p : {config.LLM_TEMPERATURE} / {config.LLM_TOP_P}")
+    log(f"  temperature / top_p : {config.LLM_TEMPERATURE} / "
+        f"{config.LLM_TOP_P if config.LLM_TOP_P is not None else '(not sent; model-file value)'}")
+    log(f"  reasoning effort    : "
+        f"{config.LLM_REASONING_EFFORT or '(not sent; model default)'}")
+    log(f"  sampling profile    : config.MODEL_PROFILES['{config.OLLAMA_MODEL_NAME}']")
+    log(f"  ollama version      : {_cmd(['ollama', '-v']) or '(no output)'}")
+    log(f"  gpu                 : "
+        f"{_cmd(['nvidia-smi', '--query-gpu=name,driver_version,memory.total', '--format=csv,noheader']) or '(no output)'}")
     log(f"  ollama model        : {config.OLLAMA_MODEL_NAME}")
     log(f"  ollama list         :\n{_cmd(['ollama', 'list']) or '(no output)'}")
     log(f"  ollama parameters   :\n{_cmd(['ollama', 'show', '--parameters', config.OLLAMA_MODEL_NAME]) or '(no output)'}")
