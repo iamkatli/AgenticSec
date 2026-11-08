@@ -5,3 +5,6 @@ reports/
 logs/
 full_run_level_data.csv
 langfues_test.py
+# working files: reset before each run, rewritten by the Writer agent
+data/current_active_vm_list.csv
+data_zero/current_active_vm_list.csv
