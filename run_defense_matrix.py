@@ -29,6 +29,16 @@ import sys
 import time
 
 from dotenv import load_dotenv
+
+# .env MUST be loaded, and CrewAI telemetry switched off, BEFORE crewai is
+# imported. CrewAI reads CREWAI_DISABLE_TELEMETRY at import time; if telemetry
+# is on, it installs its own OpenTelemetry tracer provider that exports to
+# telemetry.crewai.com, openlit.init() then reuses that provider, and every
+# span (prompts, reasoning, payload text) goes to CrewAI instead of Langfuse.
+# setdefault only applies when neither .env nor the shell sets the variable.
+load_dotenv()
+os.environ.setdefault("CREWAI_DISABLE_TELEMETRY", "true")
+
 from crewai import Agent, Crew, LLM, Process, Task
 from crewai.tools import BaseTool
 import openlit
@@ -46,11 +56,12 @@ from block_stage import (
 )
 import config
 
-load_dotenv()
-
 # ============================================================
-# Observability setup (unchanged from original)
+# Observability setup (Langfuse via openlit / OpenTelemetry)
 # ============================================================
+# Traces are sent to Langfuse only when all three LANGFUSE_* variables are
+# set; otherwise openlit prints spans to the console. Observability never
+# affects ASR / CFI / PPR -- those are measured directly in this script.
 public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
 secret_key = os.getenv("LANGFUSE_SECRET_KEY")
 base_url = os.getenv("LANGFUSE_BASE_URL")
@@ -58,10 +69,35 @@ base_url = os.getenv("LANGFUSE_BASE_URL")
 if public_key and secret_key and base_url:
     auth_string = f"{public_key}:{secret_key}"
     b64_auth = base64.b64encode(auth_string.encode()).decode()
-    os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = f"{base_url}/api/public/otel"
-    os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = f"Authorization=Basic {b64_auth}"
+    os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = f"{base_url.rstrip('/')}/api/public/otel"
+    # "%20" = URL-encoded space, as the OTel spec requires for header values
+    # in environment variables (a raw space also works with OTel 1.42).
+    os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = f"Authorization=Basic%20{b64_auth}"
 
 openlit.init()
+
+
+def trace_exporter_summary() -> str:
+    """Where spans actually go (recorded in the report header).
+
+    Guards against the failure above: if anything other than openlit's
+    own exporter owns the global tracer provider, it shows up here.
+    """
+    try:
+        from opentelemetry import trace as otel_trace
+        provider = otel_trace.get_tracer_provider()
+        targets = []
+        for proc in getattr(getattr(provider, "_active_span_processor", None), "_span_processors", ()):
+            exp = getattr(proc, "span_exporter", None) or \
+                getattr(getattr(proc, "_batch_processor", None), "_exporter", None)
+            if exp is not None:
+                targets.append(f"{type(exp).__name__} {getattr(exp, '_endpoint', '')}".strip())
+        summary = "; ".join(targets) or "(no exporter found)"
+        if "crewai.com" in summary:
+            summary += "   <-- WARNING: spans are going to CrewAI, not Langfuse"
+        return summary
+    except Exception as e:
+        return f"(unavailable: {e})"
 
 
 # ============================================================
@@ -868,7 +904,7 @@ def log_environment(runs: int, halt_on_anomaly: bool, group_keys):
     log(f"  started             : {time.strftime('%Y-%m-%d %H:%M:%S %z')}")
     log(f"  command             : {' '.join(sys.argv)}")
     log(f"  python              : {sys.version.split()[0]}")
-    for pkg in ("crewai", "litellm", "openlit"):
+    for pkg in ("crewai", "openai", "litellm", "openlit"):
         log(f"  {pkg:<20}: {_pkg_version(pkg)}")
     log(f"  git commit          : {_cmd(['git', 'rev-parse', 'HEAD']) or '(none)'}")
     log(f"  git dirty files     : {_cmd(['git', 'status', '--porcelain']) or 'none'}")
@@ -882,6 +918,7 @@ def log_environment(runs: int, halt_on_anomaly: bool, group_keys):
     log(f"  ollama version      : {_cmd(['ollama', '-v']) or '(no output)'}")
     log(f"  gpu                 : "
         f"{_cmd(['nvidia-smi', '--query-gpu=name,driver_version,memory.total', '--format=csv,noheader']) or '(no output)'}")
+    log(f"  trace exporter      : {trace_exporter_summary()}")
     log(f"  ollama model        : {config.OLLAMA_MODEL_NAME}")
     log(f"  ollama list         :\n{_cmd(['ollama', 'list']) or '(no output)'}")
     log(f"  ollama parameters   :\n{_cmd(['ollama', 'show', '--parameters', config.OLLAMA_MODEL_NAME]) or '(no output)'}")
