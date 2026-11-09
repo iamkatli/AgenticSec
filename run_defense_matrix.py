@@ -76,6 +76,14 @@ if public_key and secret_key and base_url:
 
 openlit.init()
 
+# One parent span per run attempt, so every Langfuse trace carries its group,
+# run number, model and batch (filterable in the Langfuse UI) and the report
+# records each run's trace id. Telemetry only -- nothing the LLM sees changes.
+from opentelemetry import trace as _otel_trace  # noqa: E402
+
+_TRACER = _otel_trace.get_tracer("agenticsec.benchmark")
+MODEL_TAG = config.LLM_MODEL.split("/", 1)[-1]
+
 
 def trace_exporter_summary() -> str:
     """Where spans actually go (recorded in the report header).
@@ -638,6 +646,7 @@ def run_benchmark_group(group: ExperimentGroup, runs: int, halt_on_anomaly: bool
         log_path = os.path.join(config.LOGS_DIR, f"{clean_group}_{BATCH_TS}_run_{i}.log")
 
         run_success = False
+        trace_id = ""
         attempt = 0
         crew = None
         task2 = None
@@ -646,8 +655,18 @@ def run_benchmark_group(group: ExperimentGroup, runs: int, halt_on_anomaly: bool
         while not run_success:
             reset_env(group.payload)
             crew, task2, network_tool = build_crew(group, log_path)
+            span_name = f"{group.key} run {i}"
             try:
-                crew.kickoff()
+                with _TRACER.start_as_current_span(span_name) as span:
+                    trace_id = format(span.get_span_context().trace_id, "032x")
+                    # Langfuse maps these OpenTelemetry attributes onto the trace.
+                    span.set_attribute("langfuse.trace.name", span_name)
+                    span.set_attribute("langfuse.session.id", f"{MODEL_TAG}|{group.key}|{BATCH_TS}")
+                    span.set_attribute("langfuse.trace.tags", [group.key, MODEL_TAG, f"batch-{BATCH_TS}"])
+                    for k, v in (("group", group.key), ("run", i), ("runs", runs), ("attempt", attempt + 1),
+                                 ("model", MODEL_TAG), ("batch", BATCH_TS), ("payload", group.payload)):
+                        span.set_attribute(f"langfuse.trace.metadata.{k}", v)
+                    crew.kickoff()
                 run_success = True
             except Exception as e:
                 attempt += 1
@@ -745,6 +764,7 @@ def run_benchmark_group(group: ExperimentGroup, runs: int, halt_on_anomaly: bool
         log(f"  ├─ Attack Status : {a_str}")
         log(f"  ├─ CSV Status    : {c_str}")
         log(f"  ├─ Block Stage   : {block_stage} (propagated={propagated}, attempted={attempted}, shell_execution_failed={shell_execution_failed})")
+        log(f"  ├─ Trace ID      : {trace_id}")
         log(f"  ├─ API Requests  : {run_api_calls} calls")
         log(f"  ├─ Tokens Used   : {run_tokens} (Prompt: {run_p_tokens} | Completion: {run_c_tokens})")
         log(f"  └─ Log Path      : {log_path}")

@@ -1,0 +1,37 @@
+# model: qwen3:14b
+# Machine A. Remaining Qwen3 steps (claude/Experiment_Design.md).
+# Step 1b was started by hand before this queue existed: when it finishes,
+# register its three groups with --mark-done so the queue skips them.
+
+# Step 1b -- Processor under ISO, same-config baseline
+BASE-ISO 300
+A2_DS-ISO 300
+T2_DS-ISO 300
+
+# Step 1c -- A3 vs T3 re-test
+A3_LP-LK 400
+T3_LP-LK 400
+
+# Step 2a -- combinations
+A3T3_LP-LK 100
+A3T3_LP-ISO 100
+A3TL_LP-LK 100
+A3TL_LP-ISO 100
+T3TL_LP-LK 100
+T3TL_LP-ISO 100
+A2T2_DS-LK 100
+A2T2_DS-ISO 100
+A2T2A3T3_MX-LK 100
+A2T2A3T3_MX-ISO 100
+A2T2TL_MX-LK 100
+A2T2TL_MX-ISO 100
+
+# Step 2b -- all hardened, LK vs ISO ("is isolation still necessary")
+A3T3TL_LP-LK 300
+A3T3TL_LP-ISO 300
+A2T2A3T3TL_MX-LK 300
+A2T2A3T3TL_MX-ISO 300
+
+# Step 3 -- baseline sensitivity check
+BASE_MIN-LK 100
+BASE_MIN-ISO 100
