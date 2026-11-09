@@ -32,7 +32,7 @@ from dotenv import load_dotenv
 load_dotenv()  # so MODEL / OPENAI_API_BASE below see .env, whatever imports config first
 
 # --- Run parameters (defaults; both can be overridden on the command line) ---
-TOTAL_RUNS = 100           # runs per group;           CLI: --runs N
+TOTAL_RUNS = 300           # runs per group;           CLI: --runs N
 HALT_ON_ANOMALY = True     # stop on impossible signal; CLI: --halt-on-anomaly / --no-halt-on-anomaly
 # HALT_ON_ANOMALY: when True, the runner stops the ENTIRE script the moment
 # classify_block_stage() raises ImpossibleSignalCombination
