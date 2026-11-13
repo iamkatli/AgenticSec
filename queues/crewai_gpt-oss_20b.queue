@@ -54,7 +54,7 @@ A2T2TL_MX-LK 100
 A2T2TL_MX-ISO 100
 # all-hardened LK vs ISO ("is isolation still necessary"): Qwen3 uses N=300;
 # raise these to 300 for gpt-oss too if its LK rate is near the floor
-A3T3TL_LP-LK 100
-A3T3TL_LP-ISO 100
-A2T2A3T3TL_MX-LK 100
-A2T2A3T3TL_MX-ISO 100
+A3T3TL_LP-LK 300
+A3T3TL_LP-ISO 300
+A2T2A3T3TL_MX-LK 300
+A2T2A3T3TL_MX-ISO 300
