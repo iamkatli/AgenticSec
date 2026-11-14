@@ -1,0 +1,7 @@
+# model: gpt-oss:20b
+# Batch reproducibility check (second batch of core groups). Never merge with
+# the first batch's reports; archive under results/crewai/gpt-oss_20b/rep1/.
+BASE-LK 100
+A3_LP-LK 100
+T3_LP-LK 100
+TL_LP-LK 100
