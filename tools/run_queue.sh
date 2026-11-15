@@ -27,7 +27,8 @@
 #   (a lock file in the state folder); a second --run exits at once.
 #
 # TRUNCATION CHECK: after each group the Ollama journal (journalctl -u ollama)
-#   since the group's start is searched for "truncated = 1" (an LLM call that
+#   written since the group's start (journal cursor, so clock jumps at boot do
+#   not matter) is searched for "truncated = 1" (an LLM call that
 #   hit the context limit). The count is written to the marker and the queue
 #   log, and `ollama ps` is logged. If the count is > 0 and TRUNC_HALT=1 (the
 #   default) the group is NOT marked done and the queue stops.
@@ -187,7 +188,9 @@ for item in "${QUEUE[@]}"; do
 
   say "START $key x$runs"
   stamp="$STATE/.started"; touch "$stamp"
-  gstart="$(date '+%Y-%m-%d %H:%M:%S')"
+  # Journal position at the start of the group (a cursor, not a time: the
+  # clock of a machine can jump at boot, which breaks --since).
+  jcur="$(journalctl -u ollama -n 1 --show-cursor -q --no-pager 2>/dev/null | sed -n 's/^-- cursor: //p' | tail -1)"
   # shellcheck disable=SC2086
   python run_defense_matrix.py "$key" --runs "$runs" $EXTRA_ARGS
   rc=$?
@@ -199,7 +202,11 @@ for item in "${QUEUE[@]}"; do
   [[ -n "$report" ]] || say "WARNING: could not find the report for $key"
   ollama ps 2>/dev/null | tee -a "$QUEUE_LOG" >/dev/null
   if command -v journalctl >/dev/null; then
-    trunc="$(journalctl -u ollama --since "$gstart" --no-pager 2>/dev/null | grep -cE 'truncated = [1-9]')"
+    if [[ -n "$jcur" ]]; then
+      trunc="$(journalctl -u ollama --after-cursor="$jcur" --no-pager 2>/dev/null | grep -cE 'truncated = [1-9]')"
+    else
+      trunc="$(journalctl -u ollama -b --no-pager 2>/dev/null | grep -cE 'truncated = [1-9]')"   # no cursor: whole current boot (conservative)
+    fi
   else
     trunc="n/a"
   fi
