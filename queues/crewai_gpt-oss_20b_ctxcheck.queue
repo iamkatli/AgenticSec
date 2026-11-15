@@ -1,0 +1,5 @@
+# model: gpt-oss:20b
+# Truncation check at n_ctx 4096 on the groups most affected in Qwen3. Not final data.
+T2_DS-ISO 30
+A2T2_DS-LK 30
+A2T2A3T3TL_MX-LK 30

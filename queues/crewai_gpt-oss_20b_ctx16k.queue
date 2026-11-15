@@ -1,0 +1,63 @@
+# model: gpt-oss:20b
+# Machine B. FINAL gpt-oss dataset, re-run with OLLAMA_CONTEXT_LENGTH=16384 so
+# that all three models share one configuration (decided 2026-11-16).
+# Same groups and N as the earlier gpt-oss queue (N=100; step 2b N=300).
+# Ordered so that a partial queue already covers the main claims.
+
+# Step 0 -- pilot / gate check (never combined with final data)
+ZERO-LK 10
+ZERO-ISO 10
+BASE-LK 10
+BASE-ISO 10
+
+# Baselines
+ZERO-LK 100
+ZERO-ISO 100
+BASE-LK 100
+BASE-ISO 100
+
+# Executor placement, LP (main finding)
+TL_LP-LK 100
+TL_LP-ISO 100
+T3_LP-LK 100
+T3_LP-ISO 100
+A3_LP-LK 100
+A3_LP-ISO 100
+
+# Processor DS (PPR/ASR decoupling, resurrection)
+T2_DS-LK 100
+T2_DS-ISO 100
+A2_DS-LK 100
+A2_DS-ISO 100
+
+# All-hardened LK vs ISO ("is isolation still necessary")
+A3T3TL_LP-LK 300
+A3T3TL_LP-ISO 300
+A2T2A3T3TL_MX-LK 300
+A2T2A3T3TL_MX-ISO 300
+
+# Combinations
+A3T3_LP-LK 100
+A3T3_LP-ISO 100
+A3TL_LP-LK 100
+A3TL_LP-ISO 100
+T3TL_LP-LK 100
+T3TL_LP-ISO 100
+A2T2_DS-LK 100
+A2T2_DS-ISO 100
+A2T2A3T3_MX-LK 100
+A2T2A3T3_MX-ISO 100
+A2T2TL_MX-LK 100
+A2T2TL_MX-ISO 100
+
+# Policy content x context (remaining single-element groups)
+A3_DS-LK 100
+A3_DS-ISO 100
+T3_DS-LK 100
+T3_DS-ISO 100
+TL_DS-LK 100
+TL_DS-ISO 100
+A2_LP-LK 100
+A2_LP-ISO 100
+T2_LP-LK 100
+T2_LP-ISO 100

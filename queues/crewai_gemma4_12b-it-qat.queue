@@ -1,5 +1,5 @@
 # model: gemma4:12b-it-qat
-# Machine B. Same groups as Qwen3, N=100 (see claude/MultiModel_Plan.md).
+# Machine B. Same groups as gpt-oss and Qwen3 (claude/MultiModel_Plan.md). Google Gemma 4 12B, official QAT 4-bit build; thinking = Ollama default (recorded in reports).
 
 # Step 0 -- pilot / gate check (never combined with final data)
 ZERO-LK 10
@@ -53,7 +53,7 @@ A2T2A3T3_MX-ISO 100
 A2T2TL_MX-LK 100
 A2T2TL_MX-ISO 100
 # all-hardened LK vs ISO ("is isolation still necessary"): Qwen3 uses N=300;
-# raise these to 300 for gpt-oss too if its LK rate is near the floor
+# Step 2b at N=300, same as Qwen3 and gpt-oss
 A3T3TL_LP-LK 300
 A3T3TL_LP-ISO 300
 A2T2A3T3TL_MX-LK 300

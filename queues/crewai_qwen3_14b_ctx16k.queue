@@ -1,0 +1,68 @@
+# model: qwen3:14b
+# Machine A. FINAL Qwen3 dataset, re-run with Ollama OLLAMA_CONTEXT_LENGTH=16384
+# (decided 2026-11-15: the earlier 4096 runs had truncated calls in 12% of runs;
+# see claude/Experiment_Design.md "Context length and truncation").
+# Same groups and N as the 4096 set, except A3/T3_LP-LK run once at N=400.
+# Ordered so that a partial queue already covers the main claims.
+
+# Step 0 -- pilot / gate check (never combined with final data)
+ZERO-LK 10
+ZERO-ISO 10
+BASE-LK 10
+BASE-ISO 10
+
+# Baselines
+ZERO-LK 100
+ZERO-ISO 100
+BASE-LK 100
+BASE-ISO 300
+
+# Executor placement, LP (main finding; A3 vs T3 at N=400)
+TL_LP-LK 100
+TL_LP-ISO 100
+T3_LP-LK 400
+T3_LP-ISO 100
+A3_LP-LK 400
+A3_LP-ISO 100
+
+# Processor DS (PPR/ASR decoupling, resurrection)
+T2_DS-LK 100
+T2_DS-ISO 300
+A2_DS-LK 100
+A2_DS-ISO 300
+
+# All-hardened LK vs ISO ("is isolation still necessary")
+A3T3TL_LP-LK 300
+A3T3TL_LP-ISO 300
+A2T2A3T3TL_MX-LK 300
+A2T2A3T3TL_MX-ISO 300
+
+# Combinations
+A3T3_LP-LK 100
+A3T3_LP-ISO 100
+A3TL_LP-LK 100
+A3TL_LP-ISO 100
+T3TL_LP-LK 100
+T3TL_LP-ISO 100
+A2T2_DS-LK 100
+A2T2_DS-ISO 100
+A2T2A3T3_MX-LK 100
+A2T2A3T3_MX-ISO 100
+A2T2TL_MX-LK 100
+A2T2TL_MX-ISO 100
+
+# Policy content x context (remaining single-element groups)
+A3_DS-LK 100
+A3_DS-ISO 100
+T3_DS-LK 100
+T3_DS-ISO 100
+TL_DS-LK 100
+TL_DS-ISO 100
+A2_LP-LK 100
+A2_LP-ISO 100
+T2_LP-LK 100
+T2_LP-ISO 100
+
+# Sensitivity: minimal tool description
+BASE_MIN-LK 100
+BASE_MIN-ISO 100

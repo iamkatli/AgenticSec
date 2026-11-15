@@ -4,8 +4,8 @@
 # and any machine: the queue lives in a small text file, and progress is kept
 # per model and per queue, so queues of different models never mix.
 #
-#   bash tools/run_queue.sh queues/crewai_gpt-oss_20b.queue             # start / resume
-#   bash tools/run_queue.sh queues/crewai_gpt-oss_20b.queue --status    # done / pending
+#   bash tools/run_queue.sh queues/<name>.queue            # show done / pending (safe default)
+#   bash tools/run_queue.sh queues/<name>.queue --run      # start / resume
 #   bash tools/run_queue.sh queues/crewai_qwen3_14b.queue --mark-done BASE-ISO 300 reports/benchmark_report_base-iso_....txt
 #        (register a group that was run outside the queue, so it is skipped)
 #
@@ -23,7 +23,14 @@
 #   and the git commit. Marked groups are skipped; an interrupted group starts
 #   again from run 1 (its partial runs stay in logs/ but are never counted).
 #   Any non-zero exit (anomaly halt, model server down for 15 retries, crash)
-#   stops the whole queue.
+#   stops the whole queue. Only one --run per queue can be active at a time
+#   (a lock file in the state folder); a second --run exits at once.
+#
+# TRUNCATION CHECK: after each group the Ollama journal (journalctl -u ollama)
+#   since the group's start is searched for "truncated = 1" (an LLM call that
+#   hit the context limit). The count is written to the marker and the queue
+#   log, and `ollama ps` is logged. If the count is > 0 and TRUNC_HALT=1 (the
+#   default) the group is NOT marked done and the queue stops.
 #
 # SETTINGS (environment variables, all optional):
 #   REPO        repo folder           (default: the folder above this script)
@@ -32,6 +39,7 @@
 #   OLLAMA_URL  Ollama to wait for    (default: http://localhost:11434)
 #   EXTRA_ARGS  extra flags for run_defense_matrix.py (e.g. "--no-halt-on-anomaly")
 #   GATE_MIN_ZERO_CFI  minimum ZERO CFI out of 10 in the pilot (default 1)
+#   TRUNC_HALT  1 = stop the queue when a group had truncated LLM calls (default 1)
 
 set -uo pipefail
 
@@ -41,15 +49,17 @@ STATE_ROOT="${STATE_ROOT:-$(cd "$REPO/.." && pwd)/queue_state}"
 OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
 EXTRA_ARGS="${EXTRA_ARGS:-}"
 GATE_MIN_ZERO_CFI="${GATE_MIN_ZERO_CFI:-1}"
+TRUNC_HALT="${TRUNC_HALT:-1}"
 if [[ -z "${VENV:-}" ]]; then
   if [[ -f "$REPO/.venv/bin/activate" ]]; then VENV="$REPO/.venv/bin/activate"
   else VENV="$(cd "$REPO/.." && pwd)/myenv/bin/activate"; fi
 fi
 
 QUEUE_FILE="${1:-}"
-[[ -n "$QUEUE_FILE" && -f "$QUEUE_FILE" ]] || { echo "usage: bash $0 <queue file> [--status | --mark-done KEY RUNS REPORT]"; exit 1; }
+[[ -n "$QUEUE_FILE" && -f "$QUEUE_FILE" ]] || { echo "usage: bash $0 <queue file> [--run | --status | --mark-done KEY RUNS REPORT]"; exit 1; }
 QUEUE_FILE="$(cd "$(dirname "$QUEUE_FILE")" && pwd)/$(basename "$QUEUE_FILE")"
-MODE="${2:-run}"
+MODE="${2:---status}"   # default is the harmless status view; running needs --run
+case "$MODE" in --run|--status|--mark-done) ;; *) echo "unknown option '$MODE' (use --run, --status or --mark-done)"; exit 1;; esac
 
 # --- read the queue file ----------------------------------------------------
 QUEUE_MODEL="$(grep -m1 -E '^#[[:space:]]*model:' "$QUEUE_FILE" | sed -E 's/^#[[:space:]]*model:[[:space:]]*//; s/[[:space:]]*$//')"
@@ -77,6 +87,8 @@ if [[ "$MODE" == "--status" ]]; then
     fi
   done
   echo "$done_n / $total groups done"
+  if [[ -f "$STATE/.lock" ]] && ! flock -n "$STATE/.lock" true 2>/dev/null; then echo "a --run of this queue is active right now"; fi
+  echo "(to start or resume: add --run)"
   exit 0
 fi
 
@@ -96,6 +108,8 @@ if [[ "$MODE" == "--mark-done" ]]; then
 fi
 
 # --- run ------------------------------------------------------------------------
+exec 9>"$STATE/.lock"
+flock -n 9 || { echo "another --run of this queue is already active -- not starting a second one"; exit 1; }
 # shellcheck disable=SC1090
 source "$VENV" || { echo "cannot activate $VENV"; exit 1; }
 cd "$REPO" || { echo "cannot cd to $REPO"; exit 1; }
@@ -173,6 +187,7 @@ for item in "${QUEUE[@]}"; do
 
   say "START $key x$runs"
   stamp="$STATE/.started"; touch "$stamp"
+  gstart="$(date '+%Y-%m-%d %H:%M:%S')"
   # shellcheck disable=SC2086
   python run_defense_matrix.py "$key" --runs "$runs" $EXTRA_ARGS
   rc=$?
@@ -182,7 +197,18 @@ for item in "${QUEUE[@]}"; do
   fi
   report="$(find reports -maxdepth 1 -name "benchmark_report_$(echo "$key" | tr 'A-Z' 'a-z')_*.txt" -newer "$stamp" -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -1 | cut -d' ' -f2-)"
   [[ -n "$report" ]] || say "WARNING: could not find the report for $key"
-  printf 'finished %s\nreport=%s\ncommit=%s\n' "$(date '+%F %T')" "$report" "$(git rev-parse --short HEAD)" > "$m"
-  say "DONE  $key x$runs  -> $report"
+  ollama ps 2>/dev/null | tee -a "$QUEUE_LOG" >/dev/null
+  if command -v journalctl >/dev/null; then
+    trunc="$(journalctl -u ollama --since "$gstart" --no-pager 2>/dev/null | grep -cE 'truncated = [1-9]')"
+  else
+    trunc="n/a"
+  fi
+  if [[ "$trunc" != "n/a" && "$trunc" -gt 0 && "$TRUNC_HALT" == "1" ]]; then
+    say "STOP: $key had $trunc truncated LLM calls (context limit) -- group NOT marked done. Report: $report"
+    say "Check the context length (ollama ps) before re-running; TRUNC_HALT=0 to ignore."
+    exit 3
+  fi
+  printf 'finished %s\nreport=%s\ncommit=%s\ntruncated_calls=%s\n' "$(date '+%F %T')" "$report" "$(git rev-parse --short HEAD)" "$trunc" > "$m"
+  say "DONE  $key x$runs  -> $report  (truncated LLM calls: $trunc)"
 done
 say "=== queue $QNAME complete ==="
