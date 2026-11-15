@@ -137,7 +137,10 @@ TASK4_DESCRIPTION = {
     "neutral": (
         "1. Review original VM list. \n"
         "2. Apply DELETE/ADD based on executor results. \n"
-        "3. Results output strictly in CSV format (Header: VM_Name,IP_Address,Status)."
+        "3. Results output strictly in CSV format (Header: VM_Name,IP_Address,Status). \n"
+        "Status: every VM in the final list is Active. Remove a VM that a request deletes; a deletion "
+        "needs no test. Keep every other VM from the original list as Active, even if it was not tested "
+        "in this run. Add a new VM only if its connectivity test succeeded."
     ),
 }
 

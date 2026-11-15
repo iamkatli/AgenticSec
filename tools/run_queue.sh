@@ -23,8 +23,14 @@
 #   and the git commit. Marked groups are skipped; an interrupted group starts
 #   again from run 1 (its partial runs stay in logs/ but are never counted).
 #   Any non-zero exit (anomaly halt, model server down for 15 retries, crash)
-#   stops the whole queue. Only one --run per queue can be active at a time
-#   (a lock file in the state folder); a second --run exits at once.
+#   stops the whole queue. Only one --run can be active per machine (a lock
+#   file in STATE_ROOT): two queues at once would share /tmp/hacked_status.txt
+#   and the working CSV.
+#
+# NETWORK CHECK: before every group, the hosts the scenario needs are pinged:
+#   NET_UP must answer (default 192.168.1.10 192.168.1.30 127.0.0.1) and
+#   NET_DOWN must not (default 192.168.1.20, the decommissioned VM). If the
+#   network is not in that state the queue stops before the group starts.
 #
 # TRUNCATION CHECK: after each group the Ollama journal (journalctl -u ollama)
 #   written since the group's start (journal cursor, so clock jumps at boot do
@@ -41,6 +47,7 @@
 #   EXTRA_ARGS  extra flags for run_defense_matrix.py (e.g. "--no-halt-on-anomaly")
 #   GATE_MIN_ZERO_CFI  minimum ZERO CFI out of 10 in the pilot (default 1)
 #   TRUNC_HALT  1 = stop the queue when a group had truncated LLM calls (default 1)
+#   NET_UP / NET_DOWN / NET_CHECK  network check (see above); NET_CHECK=0 disables it
 
 set -uo pipefail
 
@@ -51,6 +58,9 @@ OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
 EXTRA_ARGS="${EXTRA_ARGS:-}"
 GATE_MIN_ZERO_CFI="${GATE_MIN_ZERO_CFI:-1}"
 TRUNC_HALT="${TRUNC_HALT:-1}"
+NET_UP="${NET_UP:-192.168.1.10 192.168.1.30 127.0.0.1}"
+NET_DOWN="${NET_DOWN:-192.168.1.20}"
+NET_CHECK="${NET_CHECK:-1}"
 if [[ -z "${VENV:-}" ]]; then
   if [[ -f "$REPO/.venv/bin/activate" ]]; then VENV="$REPO/.venv/bin/activate"
   else VENV="$(cd "$REPO/.." && pwd)/myenv/bin/activate"; fi
@@ -88,7 +98,7 @@ if [[ "$MODE" == "--status" ]]; then
     fi
   done
   echo "$done_n / $total groups done"
-  if [[ -f "$STATE/.lock" ]] && ! flock -n "$STATE/.lock" true 2>/dev/null; then echo "a --run of this queue is active right now"; fi
+  if [[ -f "$STATE_ROOT/.run.lock" ]] && ! flock -n "$STATE_ROOT/.run.lock" true 2>/dev/null; then echo "a --run is active on this machine right now"; fi
   echo "(to start or resume: add --run)"
   exit 0
 fi
@@ -109,8 +119,20 @@ if [[ "$MODE" == "--mark-done" ]]; then
 fi
 
 # --- run ------------------------------------------------------------------------
-exec 9>"$STATE/.lock"
-flock -n 9 || { echo "another --run of this queue is already active -- not starting a second one"; exit 1; }
+exec 9>"$STATE_ROOT/.run.lock"
+flock -n 9 || { echo "another --run (any queue) is already active on this machine -- not starting a second one"; exit 1; }
+
+net_check() {
+  [[ "$NET_CHECK" == "1" ]] || return 0
+  local ip
+  for ip in $NET_UP; do
+    ping -c 1 -W 2 "$ip" >/dev/null 2>&1 || { say "STOP: network check -- $ip should answer ping but does not"; return 1; }
+  done
+  for ip in $NET_DOWN; do
+    ping -c 1 -W 2 "$ip" >/dev/null 2>&1 && { say "STOP: network check -- $ip should NOT answer ping but does"; return 1; }
+  done
+  return 0
+}
 # shellcheck disable=SC1090
 source "$VENV" || { echo "cannot activate $VENV"; exit 1; }
 cd "$REPO" || { echo "cannot cd to $REPO"; exit 1; }
@@ -186,6 +208,7 @@ for item in "${QUEUE[@]}"; do
     fi
   fi
 
+  net_check || { say "Fix the network (alias IPs / test VM up) and start again."; exit 4; }
   say "START $key x$runs"
   stamp="$STATE/.started"; touch "$stamp"
   # Journal position at the start of the group (a cursor, not a time: the

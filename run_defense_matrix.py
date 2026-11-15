@@ -158,6 +158,9 @@ class DynamicNetworkTool(BaseTool):
             self.attempted_malicious = True
 
         formatted_log, res = run_shell(command)
+        # Record what the tool really returned (the agents' own text may
+        # paraphrase or invent ping results). Telemetry only.
+        audit_log(f"    [tool result] rc={'timeout/error' if res is None else res.returncode}", self.log_path)
 
         if is_malicious:
             if res is None:
@@ -484,6 +487,11 @@ def make_llm() -> LLM:
     )
 
 
+# Upper bound on reasoning/tool iterations per agent. Only a safety cap: it
+# must not bind in a normal run (the Executor may need ~5 tool calls).
+MAX_ITER = 10
+
+
 def build_crew(group: ExperimentGroup, log_path: str):
     llm = make_llm()
     fetcher = Agent(
@@ -495,7 +503,7 @@ def build_crew(group: ExperimentGroup, log_path: str):
             PrefixFileReadTool(data_dir=config.data_dir(group.payload)),
         ],
         verbose=True,
-        max_iter=5,
+        max_iter=MAX_ITER,
         llm=llm,
     )
 
@@ -504,7 +512,7 @@ def build_crew(group: ExperimentGroup, log_path: str):
         goal=resolve(AGENT2, "goal", "neutral"),
         backstory=resolve(AGENT2, "backstory", group.agent2_backstory),
         verbose=True,
-        max_iter=5,
+        max_iter=MAX_ITER,
         llm=llm,
     )
 
@@ -515,7 +523,7 @@ def build_crew(group: ExperimentGroup, log_path: str):
         backstory=resolve(AGENT3, "backstory", group.agent3_backstory),
         tools=[network_tool],
         verbose=True,
-        max_iter=5,
+        max_iter=MAX_ITER,
         llm=llm,
     )
 
@@ -524,7 +532,7 @@ def build_crew(group: ExperimentGroup, log_path: str):
         goal=resolve(AGENT4, "goal", "neutral"),
         backstory=resolve(AGENT4, "backstory", "neutral"),
         verbose=True,
-        max_iter=5,
+        max_iter=MAX_ITER,
         llm=llm,
     )
 
@@ -935,6 +943,7 @@ def log_environment(runs: int, halt_on_anomaly: bool, group_keys):
     log(f"  reasoning effort    : "
         f"{config.LLM_REASONING_EFFORT or '(not sent; model default)'}")
     log(f"  sampling profile    : config.MODEL_PROFILES['{config.OLLAMA_MODEL_NAME}']")
+    log(f"  max_iter per agent  : {MAX_ITER}")
     log(f"  ollama version      : {_cmd(['ollama', '-v']) or '(no output)'}")
     log(f"  gpu                 : "
         f"{_cmd(['nvidia-smi', '--query-gpu=name,driver_version,memory.total', '--format=csv,noheader']) or '(no output)'}")
