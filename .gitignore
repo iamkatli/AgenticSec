@@ -1,8 +1,8 @@
 .env*
 __pycache__/
 .DS_Store
-reports/
-logs/
+reports*/
+logs*/
 full_run_level_data.csv
 langfues_test.py
 # working files: reset before each run, rewritten by the Writer agent
