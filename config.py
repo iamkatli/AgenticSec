@@ -76,6 +76,9 @@ MODEL_PROFILES = {
     "llama3.1:8b":      {"temperature": 0.6, "top_p": 0.9,  "reasoning_effort": None},
     # Google Gemma 3: temperature 1.0, top_p 0.95 (top_k 64 from the model file).
     "gemma3:12b":       {"temperature": 1.0, "top_p": 0.95, "reasoning_effort": None},
+    # Google Gemma 4 12B, official QAT 4-bit build (2026): temperature 1.0,
+    # top_p 0.95 (top_k 64 from the model file).
+    "gemma4:12b-it-qat": {"temperature": 1.0, "top_p": 0.95, "reasoning_effort": None},
     # Mistral NeMo: temperature 0.3 recommended; no top_p recommendation.
     "mistral-nemo:12b": {"temperature": 0.3, "top_p": None, "reasoning_effort": None},
 }
