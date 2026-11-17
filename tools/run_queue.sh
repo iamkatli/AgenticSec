@@ -35,9 +35,13 @@
 # TRUNCATION CHECK: after each group the Ollama journal (journalctl -u ollama)
 #   written since the group's start (journal cursor, so clock jumps at boot do
 #   not matter) is searched for "truncated = 1" (an LLM call that
-#   hit the context limit). The count is written to the marker and the queue
-#   log, and `ollama ps` is logged. If the count is > 0 and TRUNC_HALT=1 (the
-#   default) the group is NOT marked done and the queue stops.
+#   hit the context limit). A call that the client cancelled (the line just
+#   before is "cancel task": a runaway generation stopped by the 600 s client
+#   timeout and retried by the client, its output never reaching CrewAI) is
+#   counted separately as "runaway" and does not stop the queue; every other
+#   "truncated = 1" does. Both counts are written to the marker and the queue
+#   log, and `ollama ps` is logged. If the truncation count is > 0 and
+#   TRUNC_HALT=1 (the default) the group is NOT marked done and the queue stops.
 #
 # SETTINGS (environment variables, all optional):
 #   REPO        repo folder           (default: the folder above this script)
@@ -226,19 +230,25 @@ for item in "${QUEUE[@]}"; do
   ollama ps 2>/dev/null | tee -a "$QUEUE_LOG" >/dev/null
   if command -v journalctl >/dev/null; then
     if [[ -n "$jcur" ]]; then
-      trunc="$(journalctl -u ollama --after-cursor="$jcur" --no-pager 2>/dev/null | grep -cE 'truncated = [1-9]')"
+      jlog="$(journalctl -u ollama --after-cursor="$jcur" --no-pager 2>/dev/null)"
     else
-      trunc="$(journalctl -u ollama -b --no-pager 2>/dev/null | grep -cE 'truncated = [1-9]')"   # no cursor: whole current boot (conservative)
+      jlog="$(journalctl -u ollama -b --no-pager 2>/dev/null)"   # no cursor: whole current boot (conservative)
     fi
+    # "truncated = N>0" right after "cancel task" = runaway call cancelled by the client; otherwise truncation
+    read -r trunc runaway < <(printf '%s\n' "$jlog" | awk '
+      /cancel task/ { c = 1; next }
+      /truncated = [1-9]/ { if (c) r++; else t++ }
+      /slot +release/ { c = 0 }
+      END { print t + 0, r + 0 }')
   else
-    trunc="n/a"
+    trunc="n/a"; runaway="n/a"
   fi
   if [[ "$trunc" != "n/a" && "$trunc" -gt 0 && "$TRUNC_HALT" == "1" ]]; then
     say "STOP: $key had $trunc truncated LLM calls (context limit) -- group NOT marked done. Report: $report"
     say "Check the context length (ollama ps) before re-running; TRUNC_HALT=0 to ignore."
     exit 3
   fi
-  printf 'finished %s\nreport=%s\ncommit=%s\ntruncated_calls=%s\n' "$(date '+%F %T')" "$report" "$(git rev-parse --short HEAD)" "$trunc" > "$m"
-  say "DONE  $key x$runs  -> $report  (truncated LLM calls: $trunc)"
+  printf 'finished %s\nreport=%s\ncommit=%s\ntruncated_calls=%s\nrunaway_cancelled_calls=%s\n' "$(date '+%F %T')" "$report" "$(git rev-parse --short HEAD)" "$trunc" "$runaway" > "$m"
+  say "DONE  $key x$runs  -> $report  (truncated LLM calls: $trunc; runaway calls cancelled by client: $runaway)"
 done
 say "=== queue $QNAME complete ==="
